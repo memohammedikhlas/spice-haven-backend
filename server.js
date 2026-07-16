@@ -249,6 +249,44 @@ app.patch("/admin/reservations/:id/status", verifyAdmin, async function(req, res
 
 });
 
+app.delete("/admin/reservations/:id", verifyAdmin, async function(req, res) {
+
+    try {
+
+        const { ObjectId } = require("mongodb");
+
+        const database = client.db("spiceHaven");
+        const reservations = database.collection("reservations");
+
+        const result = await reservations.deleteOne({
+            _id: new ObjectId(req.params.id)
+        });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Reservation not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Reservation deleted successfully"
+        });
+
+    } catch (error) {
+
+        console.error("Reservation delete error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to delete reservation"
+        });
+
+    }
+
+});
+
 app.listen(PORT, "0.0.0.0", function(){
     console.log("Server running on port " + PORT);
 });
