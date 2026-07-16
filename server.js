@@ -287,6 +287,44 @@ app.delete("/admin/reservations/:id", verifyAdmin, async function(req, res) {
 
 });
 
+app.delete("/admin/contacts/:id", verifyAdmin, async function(req, res) {
+
+    try {
+
+        const { ObjectId } = require("mongodb");
+
+        const database = client.db("spiceHaven");
+        const contacts = database.collection("contacts");
+
+        const result = await contacts.deleteOne({
+            _id: new ObjectId(req.params.id)
+        });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Contact message not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Contact message deleted successfully"
+        });
+
+    } catch (error) {
+
+        console.error("Contact delete error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to delete contact message"
+        });
+
+    }
+
+});
+
 app.listen(PORT, "0.0.0.0", function(){
     console.log("Server running on port " + PORT);
 });
