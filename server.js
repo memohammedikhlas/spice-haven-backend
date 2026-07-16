@@ -32,7 +32,10 @@ app.post("/reservation", async function(req, res) {
 
     try {
 
-        const reservationData = req.body;
+        const reservationData = {
+    ...req.body,
+    status: "Pending"
+};
 
         const database = client.db("spiceHaven");
 
@@ -201,6 +204,49 @@ app.get("/admin/contacts", verifyAdmin, async function(req, res) {
             message: "Failed to fetch contact messages"
         });
     }
+});
+
+app.patch("/admin/reservations/:id/status", verifyAdmin, async function(req, res) {
+
+    try {
+        const { ObjectId } = require("mongodb");
+        const { status } = req.body;
+
+        const allowedStatuses = [
+            "Pending",
+            "Confirmed",
+            "Cancelled"
+        ];
+
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid status"
+            });
+        }
+
+        const database = client.db("spiceHaven");
+        const reservations = database.collection("reservations");
+
+        await reservations.updateOne(
+            { _id: new ObjectId(req.params.id) },
+            { $set: { status: status } }
+        );
+
+        res.json({
+            success: true,
+            message: "Reservation status updated"
+        });
+
+    } catch (error) {
+        console.error("Status update error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to update reservation status"
+        });
+    }
+
 });
 
 app.listen(PORT, "0.0.0.0", function(){
