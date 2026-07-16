@@ -58,6 +58,38 @@ app.post("/reservation", async function(req, res) {
 
 });
 
+app.post("/contact", async function(req, res) {
+
+    try {
+
+        const contactData = req.body;
+
+        const database = client.db("spiceHaven");
+
+        const contacts = database.collection("contacts");
+
+        await contacts.insertOne(contactData);
+
+        console.log("Contact message saved:", contactData);
+
+        res.json({
+            success: true,
+            message: "Message sent successfully!"
+        });
+
+    } catch (error) {
+
+        console.error("Error saving contact message:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to send message"
+        });
+
+    }
+
+});
+
 app.listen(PORT, "0.0.0.0", function(){
     console.log("Server running on port " + PORT);
 });
