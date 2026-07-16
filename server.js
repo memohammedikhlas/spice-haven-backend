@@ -5,6 +5,8 @@ const { MongoClient } = require("mongodb");
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
+const jwt = require("jsonwebtoken");
+
 const app = express();
 const PORT = 3000;
 
@@ -98,9 +100,17 @@ app.post("/admin/login", function(req, res){
         username === process.env.ADMIN_USERNAME &&
         password === process.env.ADMIN_PASSWORD
     ){
+
+        const token = jwt.sign(
+            { role: "admin" },
+            process.env.JWT_SECRET,
+            { expiresIn: "2h" }
+        );
+
         return res.json({
             success: true,
-            message: "Login successful"
+            message: "Login successful",
+            token: token
         });
     }
 
@@ -109,6 +119,88 @@ app.post("/admin/login", function(req, res){
         message: "Invalid username or password"
     });
 
+});
+
+function verifyAdmin(req, res, next) {
+
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({
+            success: false,
+            message: "Access denied"
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    try {
+
+        jwt.verify(token, process.env.JWT_SECRET);
+
+        next();
+
+    } catch (error) {
+
+        return res.status(401).json({
+            success: false,
+            message: "Invalid or expired token"
+        });
+
+    }
+}
+
+app.get("/admin/reservations", verifyAdmin, async function(req, res) {
+
+    try {
+        const database = client.db("spiceHaven");
+        const reservations = database.collection("reservations");
+
+        const data = await reservations
+            .find({})
+            .sort({ _id: -1 })
+            .toArray();
+
+        res.json({
+            success: true,
+            reservations: data
+        });
+
+    } catch (error) {
+        console.error("Error fetching reservations:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch reservations"
+        });
+    }
+});
+
+
+app.get("/admin/contacts", verifyAdmin, async function(req, res) {
+
+    try {
+        const database = client.db("spiceHaven");
+        const contacts = database.collection("contacts");
+
+        const data = await contacts
+            .find({})
+            .sort({ _id: -1 })
+            .toArray();
+
+        res.json({
+            success: true,
+            contacts: data
+        });
+
+    } catch (error) {
+        console.error("Error fetching contacts:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch contact messages"
+        });
+    }
 });
 
 app.listen(PORT, "0.0.0.0", function(){
