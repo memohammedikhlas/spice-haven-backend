@@ -90,6 +90,27 @@ app.post("/contact", async function(req, res) {
 
 });
 
+app.post("/admin/login", function(req, res){
+
+    const { username, password } = req.body;
+
+    if(
+        username === process.env.ADMIN_USERNAME &&
+        password === process.env.ADMIN_PASSWORD
+    ){
+        return res.json({
+            success: true,
+            message: "Login successful"
+        });
+    }
+
+    res.status(401).json({
+        success: false,
+        message: "Invalid username or password"
+    });
+
+});
+
 app.listen(PORT, "0.0.0.0", function(){
     console.log("Server running on port " + PORT);
 });
