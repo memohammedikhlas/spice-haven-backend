@@ -1,7 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
+const rateLimit = require("express-rate-limit");
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
@@ -21,81 +22,186 @@ async function connectDB() {
 
 connectDB();
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = [
+    "https://memohammedikhlas.github.io",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500"
+];
+
+app.use(cors({
+    origin: allowedOrigins
+}));
+app.use(express.json({ limit: "10kb" }));
+
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: {
+        success: false,
+        message: "Too many login attempts. Please try again after 15 minutes."
+    }
+});
+
+app.use(limiter);
 
 app.get("/", function(req, res){
     res.send("Spice Haven Backend is Running!");
 });
 
 app.post("/reservation", async function(req, res) {
-
     try {
+        const { name, phone, date, time, guests } = req.body;
+
+        // Required fields check
+        if (!name || !phone || !date || !time || !guests) {
+            return res.status(400).json({
+                success: false,
+                message: "All reservation fields are required"
+            });
+        }
+
+        // Basic validation
+        if (name.trim().length < 2 || name.trim().length > 100) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid name"
+            });
+        }
+
+        if (!/^[0-9+\-\s()]{7,20}$/.test(phone.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid phone number"
+            });
+        }
+
+        const guestCount = Number(guests);
+
+        if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 20) {
+            return res.status(400).json({
+                success: false,
+                message: "Guests must be between 1 and 20"
+            });
+        }
+
+        const reservationDate = new Date(`${date}T${time}`);
+
+        if (
+            Number.isNaN(reservationDate.getTime()) ||
+            reservationDate.getTime() < Date.now()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Please select a valid future date and time"
+            });
+        }
 
         const reservationData = {
-    ...req.body,
-    status: "Pending"
-};
+            name: name.trim(),
+            phone: phone.trim(),
+            date,
+            time,
+            guests: guestCount,
+            status: "Pending",
+            createdAt: new Date()
+        };
 
         const database = client.db("spiceHaven");
-
         const reservations = database.collection("reservations");
 
         await reservations.insertOne(reservationData);
 
-        console.log("Reservation saved:", reservationData);
-
-        res.json({
+        res.status(201).json({
             success: true,
             message: "Reservation saved successfully!"
         });
 
     } catch (error) {
-
         console.error("Error saving reservation:", error);
 
         res.status(500).json({
             success: false,
             message: "Failed to save reservation"
         });
-
     }
-
 });
 
 app.post("/contact", async function(req, res) {
-
     try {
+        const { name, email, phone, message } = req.body;
 
-        const contactData = req.body;
+        if (!name || !email || !message) {
+            return res.status(400).json({
+                success: false,
+                message: "Name, email and message are required"
+            });
+        }
+
+        if (name.trim().length < 2 || name.trim().length > 100) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid name"
+            });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(email.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid email address"
+            });
+        }
+
+        if (
+            phone &&
+            !/^[0-9+\-\s()]{7,20}$/.test(phone.trim())
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid phone number"
+            });
+        }
+
+        if (message.trim().length < 5 || message.trim().length > 1000) {
+            return res.status(400).json({
+                success: false,
+                message: "Message must be between 5 and 1000 characters"
+            });
+        }
+
+        const contactData = {
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone ? phone.trim() : "",
+            message: message.trim(),
+            createdAt: new Date()
+        };
 
         const database = client.db("spiceHaven");
-
         const contacts = database.collection("contacts");
 
         await contacts.insertOne(contactData);
 
-        console.log("Contact message saved:", contactData);
-
-        res.json({
+        res.status(201).json({
             success: true,
             message: "Message sent successfully!"
         });
 
     } catch (error) {
-
         console.error("Error saving contact message:", error);
 
         res.status(500).json({
             success: false,
             message: "Failed to send message"
         });
-
     }
-
 });
 
-app.post("/admin/login", function(req, res){
+app.post("/admin/login", loginLimiter, function(req, res){
 
     const { username, password } = req.body;
 
@@ -209,8 +315,28 @@ app.get("/admin/contacts", verifyAdmin, async function(req, res) {
 app.patch("/admin/reservations/:id/status", verifyAdmin, async function(req, res) {
 
     try {
-        const { ObjectId } = require("mongodb");
+
+        if (!ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({
+        success: false,
+        message: "Invalid reservation ID"
+    });
+}
+
         const { status } = req.body;
+
+        const allowedStatuses = [
+    "Pending",
+    "Confirmed",
+    "Cancelled"
+];
+
+if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({
+        success: false,
+        message: "Invalid reservation status"
+    });
+}
 
         const allowedStatuses = [
             "Pending",
@@ -253,6 +379,13 @@ app.delete("/admin/reservations/:id", verifyAdmin, async function(req, res) {
 
     try {
 
+        if (!ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({
+        success: false,
+        message: "Invalid reservation ID"
+    });
+}
+
         const { ObjectId } = require("mongodb");
 
         const database = client.db("spiceHaven");
@@ -290,6 +423,13 @@ app.delete("/admin/reservations/:id", verifyAdmin, async function(req, res) {
 app.delete("/admin/contacts/:id", verifyAdmin, async function(req, res) {
 
     try {
+
+        if (!ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({
+        success: false,
+        message: "Invalid contact ID"
+    });
+}
 
         const { ObjectId } = require("mongodb");
 
